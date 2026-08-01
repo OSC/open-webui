@@ -21,7 +21,7 @@ from open_webui.constants import ERROR_MESSAGES
 from open_webui.env import AIOHTTP_CLIENT_SESSION_SSL
 from open_webui.events import EVENTS, publish_event
 from open_webui.models.config import Config
-from open_webui.routers.openai import get_all_models_responses
+import open_webui.routers.openai as openai
 from open_webui.utils.auth import get_admin_user
 from pydantic import BaseModel
 from starlette.responses import FileResponse
@@ -197,7 +197,7 @@ router = APIRouter()
 
 @router.get('/list')
 async def get_pipelines_list(request: Request, user=Depends(get_admin_user)):
-    responses = await get_all_models_responses(request, user)
+    responses = await openai.get_all_models_responses(request, user)
     log.debug(f'get_pipelines_list: get_openai_models_responses returned {responses}')
 
     urlIdxs = [idx for idx, response in enumerate(responses) if response is not None and 'pipelines' in response]

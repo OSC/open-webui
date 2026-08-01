@@ -36,12 +36,15 @@ from open_webui.env import (
 from open_webui.internal.db import get_async_session
 from open_webui.models.access_grants import AccessGrants
 from open_webui.models.config import Config
+from open_webui.models.functions import Functions
 from open_webui.models.groups import Groups
 from open_webui.models.models import Models
 from open_webui.models.users import UserModel
+import open_webui.routers.pipelines as pipelines
 from open_webui.utils.access_control import check_model_access, has_connection_access, has_permission
 from open_webui.utils.anthropic import get_anthropic_models, is_anthropic_url
 from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.filter import get_sorted_filter_ids, process_filter_functions
 from open_webui.utils.headers import get_custom_headers, include_user_info_headers
 from open_webui.utils.misc import (
     convert_logit_bias_input_to_json,
@@ -1365,6 +1368,7 @@ async def embeddings(request: Request, form_data: dict, user):
         dict: OpenAI-compatible embeddings response.
     """
     idx = 0
+    model = {}
     # Prepare payload/body
     body = json.dumps(form_data)
     # Find correct backend url/key based on model
@@ -1375,13 +1379,38 @@ async def embeddings(request: Request, form_data: dict, user):
         await get_all_models(request, user=user)
         models = request.app.state.OPENAI_MODELS
     if model_id in models:
-        idx = models[model_id]['urlIdx']
+        model = models[model_id]
+        idx = model['urlIdx']
 
     url, key, api_config = await get_openai_connection(idx)
+
+    try:
+        metadata = {}
+        extra_params = {
+            "__event_emitter__": lambda e: None,
+            "__event_call__": lambda e: None,
+            "__user__": user.model_dump() if isinstance(user, UserModel) else {},
+            "__metadata__": metadata,
+            "__request__": request,
+            "__model__": model,
+            "__oauth_token__": None,
+        }
+        filter_ids = await get_sorted_filter_ids(request, model, metadata.get('filter_ids', []))
+        filter_functions = await Functions.get_functions_by_ids(filter_ids)
+        form_data, _ = await process_filter_functions(
+            request=request,
+            filter_functions=filter_functions,
+            filter_type="inlet",
+            form_data=form_data,
+            extra_params=extra_params,
+        )
+    except Exception as e:
+        raise Exception(f'{e}')
 
     r = None
     streaming = False
 
+    body = json.dumps(form_data)
     headers, cookies = await get_headers_and_cookies(request, url, key, api_config, user=user)
 
     if api_config.get('azure') or api_config.get('provider') == 'azure':
@@ -1417,6 +1446,35 @@ async def embeddings(request: Request, form_data: dict, user):
             ssl=AIOHTTP_CLIENT_SESSION_SSL,
         )
 
+        try:
+            response_data = await r.json()
+        except Exception:
+            response_data = await r.text()
+        try:
+            response_data = await pipelines.process_pipeline_outlet_filter(request, response_data, user, models)
+        except Exception as e:
+            log.debug(f'Pipeline outlet filter error: {e}')
+        # Function outlet filters
+        extra_params = {
+            '__event_emitter__': lambda e: None,
+            '__event_call__': lambda e: None,
+            '__user__': user.model_dump() if isinstance(user, UserModel) else {},
+            '__metadata__': metadata,
+            '__request__': request,
+            '__model__': model,
+        }
+
+        filter_ids = await get_sorted_filter_ids(request, model, metadata.get('filter_ids', []))
+        filter_functions = await Functions.get_functions_by_ids(filter_ids)
+
+        response_data, _ = await process_filter_functions(
+            request=request,
+            filter_functions=filter_functions,
+            filter_type='outlet',
+            form_data=response_data,
+            extra_params=extra_params,
+        )
+
         if 'text/event-stream' in r.headers.get('Content-Type', ''):
             streaming = True
             return StreamingResponse(
@@ -1425,11 +1483,6 @@ async def embeddings(request: Request, form_data: dict, user):
                 headers=_clean_proxy_headers(r.headers),
             )
         else:
-            try:
-                response_data = await r.json()
-            except Exception:
-                response_data = await r.text()
-
             if r.status >= 400:
                 await publish_model_provider_request_failed(
                     request,
