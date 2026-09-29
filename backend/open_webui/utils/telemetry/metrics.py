@@ -32,6 +32,7 @@ from open_webui.env import (
     OTEL_METRICS_EXPORTER_OTLP_INSECURE,
     OTEL_METRICS_OTLP_SPAN_EXPORTER,
     OTEL_SERVICE_NAME,
+    OTEL_METRICS_SKIP_ROUTES,
 )
 from open_webui.models.users import User
 from opentelemetry import metrics
@@ -248,5 +249,6 @@ def setup_metrics(app: FastAPI, resource: Resource, db_engine: Engine) -> None:
                 'http.status_code': status_code,
             }
 
-            request_counter.add(1, attrs)
-            duration_histogram.record(elapsed_ms, attrs)
+            if route_path not in OTEL_METRICS_SKIP_ROUTES:
+                request_counter.add(1, attrs)
+                duration_histogram.record(elapsed_ms, attrs)
