@@ -1298,3 +1298,5 @@ OTEL_METRICS_OTLP_SPAN_EXPORTER = os.getenv(
 OTEL_LOGS_OTLP_SPAN_EXPORTER = os.getenv(
     'OTEL_LOGS_OTLP_SPAN_EXPORTER', OTEL_OTLP_SPAN_EXPORTER
 ).lower()  # grpc or http
+
+OTEL_METRICS_SKIP_ROUTES = os.getenv('OTEL_METRICS_SKIP_ROUTES', '/health,/health/db').split(',')
