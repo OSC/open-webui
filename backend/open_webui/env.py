@@ -125,6 +125,7 @@ else:
 
 log = logging.getLogger(__name__)
 log.info('GLOBAL_LOG_LEVEL: %s', GLOBAL_LOG_LEVEL)
+UVICORN_LOGGER_LOG_LEVEL = os.getenv('UVICORN_LOGGER_LOG_LEVEL', GLOBAL_LOG_LEVEL).upper()
 
 if _cuda_error:
     log.error(_cuda_error)
