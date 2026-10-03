@@ -16,6 +16,7 @@ from open_webui.env import (
     ENABLE_OTEL,
     ENABLE_OTEL_LOGS,
     GLOBAL_LOG_LEVEL,
+    UVICORN_LOGGER_LOG_LEVEL,
     LOG_FORMAT,
     LOGURU_DIAGNOSE,
 )
@@ -217,7 +218,7 @@ def start_logger():
 
     for uvicorn_logger_name in AUDIT_UVICORN_LOGGER_NAMES:
         uvicorn_logger = logging.getLogger(uvicorn_logger_name)
-        uvicorn_logger.setLevel(GLOBAL_LOG_LEVEL)
+        uvicorn_logger.setLevel(UVICORN_LOGGER_LOG_LEVEL)
         uvicorn_logger.handlers = [InterceptHandler()]
 
     logger.info(f'GLOBAL_LOG_LEVEL: {GLOBAL_LOG_LEVEL}')
